@@ -30,10 +30,10 @@ public:
 							if (it->equipIndex.index == 2) {
 								TESObjectWEAP* wep = (TESObjectWEAP*)it->item.object;
 								BGSProjectile* projBase = wep->weaponData.rangedData->overrideProjectile;
-								if (projBase->data.explosionProximity == FP_ZERO && (projBase->data.flags & 0x4) != 0) {
+								if (projBase->data.explosionProximity == FP_ZERO && (projBase->data.flags & 0x4) != 0 && (projBase->data.flags & 0x20000) != 0) {
 									grenadeForm = wep;
 									pinMaxTime = projBase->data.explosionTimer;
-									_MESSAGE("Grenade Instance found. Max cook time %f", pinMaxTime);
+									//_MESSAGE("Grenade Instance found. Max cook time %f. Proj flag %llx", pinMaxTime, projBase->data.flags);
 								}
 							}
 						}
@@ -41,7 +41,7 @@ public:
 					}
 					if (grenadeForm) {
 						pinPullTime = *F4::ptr_engineTime;
-						_MESSAGE("Pin pulled at %f secs", pinPullTime);
+						//_MESSAGE("Pin pulled at %f secs", pinPullTime);
 					}
 				} else {
 					if (grenadeForm) {
@@ -101,7 +101,7 @@ public:
 		if (this->shooter.get().get() == p && this->weaponSource.object == grenadeForm) {
 			taskInterface->AddTask([this]() {
 				this->explosionTimer -= cookTime;
-				_MESSAGE("Projectile found at %llx. Cook time %f secs, remaining timer %f secs", this, cookTime, this->explosionTimer);
+				//_MESSAGE("Projectile found at %llx. Cook time %f secs, remaining timer %f secs", this, cookTime, this->explosionTimer);
 				grenadeForm = nullptr;
 			});
 		}
