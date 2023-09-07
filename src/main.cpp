@@ -11,13 +11,11 @@ static float cookTime;
 static TESObjectWEAP* grenadeForm;
 const static F4SE::TaskInterface* taskInterface;
 
-class CookInputHandler
-{
+class CookInputHandler {
 public:
-	typedef void (CookInputHandler::*FnProceeButtonEvent)(ButtonEvent* evn);
+	typedef void (CookInputHandler::* FnProceeButtonEvent)(ButtonEvent* evn);
 
-	void ProcessButtonEvent(ButtonEvent* evn)
-	{
+	void ProcessButtonEvent(ButtonEvent* evn) {
 		bool interruptThrow = false;
 		if (evn->value != FP_ZERO) {
 			if (evn->heldDownSecs >= fThrowDelay->GetFloat()) {
@@ -43,21 +41,23 @@ public:
 						pinPullTime = *F4::ptr_engineTime;
 						//_MESSAGE("Pin pulled at %f secs", pinPullTime);
 					}
-				} else {
+				}
+				else {
 					if (grenadeForm) {
 						if (*F4::ptr_engineTime - pinPullTime >= pinMaxTime) {
 							evn->value = FP_ZERO;
 							cookTime = pinMaxTime;
 							BGSEquipIndex equipIndex;
 							equipIndex.index = 2;
-							(*F4::ptr_TaskQueueInterface)->QueueWeaponFire(grenadeForm, p, equipIndex, grenadeForm->weaponData.ammo);
+							TaskQueueInterface::GetSingleton()->QueueWeaponFire(grenadeForm, p, equipIndex, grenadeForm->weaponData.ammo);
 							interruptThrow = true;
 							*isPinPulled = false;
 						}
 					}
 				}
 			}
-		} else {
+		}
+		else {
 			if (grenadeForm) {
 				cookTime = *F4::ptr_engineTime - pinPullTime;
 			}
@@ -72,8 +72,7 @@ public:
 		}
 	}
 
-	void HookSink()
-	{
+	void HookSink() {
 		uintptr_t vtable = *(uintptr_t*)this;
 		auto it = fnHash.find(vtable);
 		if (it == fnHash.end()) {
@@ -87,13 +86,11 @@ protected:
 };
 unordered_map<uintptr_t, CookInputHandler::FnProceeButtonEvent> CookInputHandler::fnHash;
 
-class CookedGrenadeProjectile : public GrenadeProjectile
-{
+class CookedGrenadeProjectile : public GrenadeProjectile {
 public:
-	typedef void (CookedGrenadeProjectile::*FnHandle3DLoaded)();
+	typedef void (CookedGrenadeProjectile::* FnHandle3DLoaded)();
 
-	void HookedHandle3DLoaded()
-	{
+	void HookedHandle3DLoaded() {
 		FnHandle3DLoaded fn = fnHash.at(*(uintptr_t*)this);
 		if (fn)
 			(this->*fn)();
@@ -107,8 +104,7 @@ public:
 		}
 	}
 
-	static void HookHandle3DLoaded(uintptr_t addr)
-	{
+	static void HookHandle3DLoaded(uintptr_t addr) {
 		FnHandle3DLoaded fn = SafeWrite64Function(addr + 0x740, &CookedGrenadeProjectile::HookedHandle3DLoaded);
 		fnHash.insert(std::pair<uintptr_t, FnHandle3DLoaded>(addr, fn));
 	}
@@ -119,15 +115,38 @@ protected:
 
 unordered_map<uintptr_t, CookedGrenadeProjectile::FnHandle3DLoaded> CookedGrenadeProjectile::fnHash;
 
-void InitializePlugin()
-{
-	p = PlayerCharacter::GetSingleton();
-	pcon = PlayerControls::GetSingleton();
-	for (auto it = INISettingCollection::GetSingleton()->settings.begin(); it != INISettingCollection::GetSingleton()->settings.end(); ++it) {
-		if (strcmp((*it)->_key, "fThrowDelay:Controls") == 0) {
-			fThrowDelay = *it;
+class AnimationGraphEventWatcher {
+public:
+	typedef BSEventNotifyControl (AnimationGraphEventWatcher::* FnProcessEvent)(BSAnimationGraphEvent& evn, BSTEventSource<BSAnimationGraphEvent>* dispatcher);
+
+	BSEventNotifyControl HookedProcessEvent(BSAnimationGraphEvent& evn, BSTEventSource<BSAnimationGraphEvent>* src) {
+		if (grenadeForm && evn.animEvent == "staggerStop") {
+			grenadeForm = nullptr;
+			*(bool*)((uintptr_t)pcon->meleeThrowHandler + 0x28) = false;
+		}
+		FnProcessEvent fn = fnHash.at(*(uintptr_t*)this);
+		return fn ? (this->*fn)(evn, src) : BSEventNotifyControl::kContinue;
+	}
+
+	void HookSink() {
+		uintptr_t vtable = *(uintptr_t*)this;
+		auto it = fnHash.find(vtable);
+		if (it == fnHash.end()) {
+			FnProcessEvent fn = SafeWrite64Function(vtable + 0x8, &AnimationGraphEventWatcher::HookedProcessEvent);
+			fnHash.insert(std::pair<uintptr_t, FnProcessEvent>(vtable, fn));
 		}
 	}
+
+protected:
+	static std::unordered_map<uintptr_t, FnProcessEvent> fnHash;
+};
+std::unordered_map<uintptr_t, AnimationGraphEventWatcher::FnProcessEvent> AnimationGraphEventWatcher::fnHash;
+
+void InitializePlugin() {
+	p = PlayerCharacter::GetSingleton();
+	((AnimationGraphEventWatcher*)((uintptr_t)p + 0x38))->HookSink();
+	pcon = PlayerControls::GetSingleton();
+	fThrowDelay = INISettingCollection::GetSingleton()->GetSetting("fThrowDelay:Controls");
 	if (fThrowDelay) {
 		_MESSAGE("fThrowDelay:Controls found");
 		((CookInputHandler*)pcon->meleeThrowHandler)->HookSink();
@@ -137,8 +156,7 @@ void InitializePlugin()
 	}
 }
 
-extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Query(const F4SE::QueryInterface* a_f4se, F4SE::PluginInfo* a_info)
-{
+extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Query(const F4SE::QueryInterface * a_f4se, F4SE::PluginInfo * a_info) {
 #ifndef NDEBUG
 	auto sink = std::make_shared<spdlog::sinks::msvc_sink_mt>();
 #else
@@ -183,8 +201,7 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Query(const F4SE::QueryInterface* a
 	return true;
 }
 
-extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface* a_f4se)
-{
+extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface * a_f4se) {
 	F4SE::Init(a_f4se);
 
 	const F4SE::MessagingInterface* message = F4SE::GetMessagingInterface();
@@ -192,7 +209,8 @@ extern "C" DLLEXPORT bool F4SEAPI F4SEPlugin_Load(const F4SE::LoadInterface* a_f
 	message->RegisterListener([](F4SE::MessagingInterface::Message* msg) -> void {
 		if (msg->type == F4SE::MessagingInterface::kGameDataReady) {
 			InitializePlugin();
-		} else if (msg->type == F4SE::MessagingInterface::kPreLoadGame) {
+		}
+		else if (msg->type == F4SE::MessagingInterface::kPreLoadGame || msg->type == F4SE::MessagingInterface::kNewGame) {
 			grenadeForm = nullptr;
 		}
 	});
